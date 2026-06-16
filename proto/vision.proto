@@ -1,0 +1,40 @@
+syntax = "proto3";
+package vision;
+
+// ── Vision & Parsing Node Service ────────────────────────────────────────────
+// Extracts UI components from uploaded screenshots and tech stacks from URLs.
+// Model: meta/llama-3.2-11b-vision-instruct (primary) | graceful degradation
+//
+// Degradation policy: if primary fails, returns degraded=true — never raises
+// a gRPC error. The gateway handles the degraded state gracefully by prompting
+// the user to describe their UI in text instead.
+
+service VisionService {
+  // Analyze a base64-encoded screenshot and extract UI structure
+  rpc AnalyzeImage (ImageRequest) returns (VisionResponse);
+
+  // Fetch a URL's HTML and identify the tech stack
+  rpc ScrapeTechStack (ScrapeRequest) returns (ScrapeResponse);
+}
+
+message ImageRequest {
+  string image_base64 = 1;  // Base64-encoded image data
+}
+
+message VisionResponse {
+  bool   degraded             = 1;  // True if Vision NIM was unavailable
+  string layout_json          = 2;  // JSON array of layout sections
+  string components_json      = 3;  // JSON array of UI components found
+  string color_palette_json   = 4;  // JSON array of dominant colors
+  string style_vibe           = 5;  // e.g. "minimal", "bold", "corporate"
+  string degradation_message  = 6;  // User-facing message when degraded=true
+}
+
+message ScrapeRequest {
+  string url = 1;
+}
+
+message ScrapeResponse {
+  string detected_frameworks_json = 1;  // JSON array of detected frameworks
+  string detected_db_hints_json   = 2;  // JSON array of inferred DB indicators
+}

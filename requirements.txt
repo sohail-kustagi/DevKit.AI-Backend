@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+grpcio
+grpcio-tools
+httpx
+motor
+chromadb
+sentence-transformers
+python-multipart
+sse-starlette
+websockets
+pytest
+pytest-asyncio

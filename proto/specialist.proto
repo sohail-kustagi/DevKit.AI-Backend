@@ -1,0 +1,29 @@
+syntax = "proto3";
+package specialist;
+
+// ── Specialist Swarm Service ──────────────────────────────────────────────────
+// The three specialists that generate all final deliverables.
+// Model: qwen/qwen3.5-72b-instruct (primary) | deepseek/deepseek-v4 (fallback)
+//
+// RunSwarm is server-streaming. It yields one SwarmProgressEvent per specialist,
+// then a final "done" event with all outputs combined. This stream is proxied
+// directly to the frontend as SSE events by the FastAPI gateway.
+
+service SpecialistService {
+  // Run all three specialists sequentially with staggered delays and stream progress
+  rpc RunSwarm (BriefRequest) returns (stream SwarmProgressEvent);
+}
+
+message BriefRequest {
+  string brief_json = 1;  // The master brief from OrchestratorService.CompileFinalBrief
+}
+
+message SwarmProgressEvent {
+  // Event type values (emitted in this order):
+  //   "architect_complete" — Systems Architect done
+  //   "pm_complete"        — Project Manager done
+  //   "prompt_complete"    — Prompt Engineer done (instruction.md ready)
+  //   "done"               — All specialists complete, payload contains all outputs
+  string event_type   = 1;
+  string payload_json = 2;  // JSON output of the completed specialist, or all outputs on "done"
+}

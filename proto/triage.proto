@@ -1,0 +1,34 @@
+syntax = "proto3";
+package triage;
+
+// ── Triage Agent Service ──────────────────────────────────────────────────────
+// Classifies user technical fluency and generates targeted phase questions.
+// Model: meta/llama-3.1-8b-instruct (primary) | moonshotai/kimi-k2 (fallback)
+
+service TriageService {
+  // Classify user fluency as "beginner" or "developer"
+  rpc ClassifyFluency (TriageRequest) returns (TriageResponse);
+
+  // Stream the next phase question token-by-token
+  rpc GenerateQuestion (QuestionRequest) returns (stream QuestionChunk);
+}
+
+message TriageRequest {
+  string user_input = 1;
+}
+
+message TriageResponse {
+  string fluency     = 1;   // "beginner" or "developer"
+  float  confidence  = 2;   // 0.0 to 1.0
+  string reasoning   = 3;   // Brief explanation of the classification
+}
+
+message QuestionRequest {
+  int32  phase        = 1;  // Current phase number (1-6)
+  string fluency      = 2;  // "beginner" or "developer"
+  string context_json = 3;  // JSON-serialized phase context from previous answers
+}
+
+message QuestionChunk {
+  string token = 1;  // Individual token streamed from NIM
+}

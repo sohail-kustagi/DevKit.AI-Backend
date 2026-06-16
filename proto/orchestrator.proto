@@ -1,0 +1,31 @@
+syntax = "proto3";
+package orchestrator;
+
+// ── Orchestrator Service ──────────────────────────────────────────────────────
+// The Brain. Manages state across the 6-phase pipeline and delegates tasks.
+// Model: deepseek/deepseek-v4 (primary) | MiniMaxAI/MiniMax-M3-preview (fallback)
+//
+// The Orchestrator reads the full session document and decides exactly ONE of
+// four possible actions. It does NOT generate final outputs — it only coordinates.
+
+service OrchestratorService {
+  // Evaluate session state and determine the next action
+  rpc DecideNextAction (SessionPayload) returns (ActionResponse);
+
+  // Aggregate all 6 phases into a master brief for the Specialist Swarm
+  rpc CompileFinalBrief (SessionPayload) returns (BriefResponse);
+}
+
+message SessionPayload {
+  string session_json = 1;  // Full MongoDB session document serialized as JSON
+}
+
+message ActionResponse {
+  // One of: "ask_question" | "skip_to_phase" | "delegate_specialist" | "generate_final"
+  string action       = 1;
+  string payload_json = 2;  // Context relevant to the chosen action
+}
+
+message BriefResponse {
+  string brief_json = 1;  // Aggregated master brief for the Specialist Swarm
+}
