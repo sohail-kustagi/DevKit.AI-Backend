@@ -71,14 +71,14 @@ async def websocket_session(websocket: WebSocket, session_id: str):
 @router.get("/stream/generate/{session_id}")
 async def stream_generation(session_id: str):
     async def event_generator():
-        yield 'data: {"type": "brief_ready"}\n\n'
+        yield 'data: {"event": "brief_ready"}\n\n'
         
         session = await get_session(session_id)
         brief = await orchestrator_compile_brief(json.dumps(session, default=str))
         
         final_outputs = {}
         async for event_type, payload_json in specialist_run_swarm(brief):
-            yield f'data: {{"type": "{event_type}", "payload_json": {payload_json}}}\n\n'
+            yield f'data: {{"event": "{event_type}", "payload_json": {payload_json}}}\n\n'
             if event_type == "done":
                 data = json.loads(payload_json)
                 final_outputs = data
@@ -91,9 +91,30 @@ async def stream_generation(session_id: str):
                 final_outputs.get("instruction_md"),
                 "# Full Report\nGenerated successfully."
             )
-            yield 'data: {"type": "saved"}\n\n'
+            yield 'data: {"event": "saved"}\n\n'
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.get("/session/{session_id}/results")
+async def fetch_results(session_id: str):
+    session = await get_session(session_id)
+    if not session or not session.get("final_outputs"):
+        return JSONResponse({"error": "Not found or not generated"}, status_code=404)
+        
+    outputs = session["final_outputs"]
+    
+    # Map the backend final_outputs to the frontend Results interface
+    return {
+        "project_name": "DevKit.AI Generated Blueprint",
+        "architecture": outputs.get("architecture", {}),
+        "milestones": outputs.get("milestones", {}).get("timeline", []), # Assuming milestones returned as a list in timeline
+        "cost": {
+            "launch": "$20-50 / mo",
+            "scale": "$200+ / mo"
+        },
+        "instruction_md": outputs.get("instruction_md", ""),
+        "saved": True
+    }
 
 @router.get("/export/instruction-md/{session_id}")
 async def download_instruction(session_id: str):
