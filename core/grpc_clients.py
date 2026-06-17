@@ -6,6 +6,7 @@ from constants.defs import GRPC_PORT
 from generated import triage_pb2, triage_pb2_grpc
 from generated import orchestrator_pb2, orchestrator_pb2_grpc
 from generated import specialist_pb2, specialist_pb2_grpc
+from generated import vision_pb2, vision_pb2_grpc
 
 GRPC_TIMEOUT = 330  # seconds — must exceed NIM 300s timeout
 
@@ -54,3 +55,10 @@ async def specialist_run_swarm(brief_json: str):
             yield event.event_type, event.payload_json
     finally:
         await channel.close()
+
+async def vision_analyze_image(image_base64: str):
+    async with get_grpc_channel() as channel:
+        stub = vision_pb2_grpc.VisionServiceStub(channel)
+        req = vision_pb2.ImageRequest(image_base64=image_base64)
+        resp = await stub.AnalyzeImage(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
+        return resp

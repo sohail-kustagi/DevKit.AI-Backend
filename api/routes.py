@@ -12,7 +12,8 @@ from core.grpc_clients import (
     triage_generate_question, 
     orchestrator_decide, 
     orchestrator_compile_brief, 
-    specialist_run_swarm
+    specialist_run_swarm,
+    vision_analyze_image
 )
 
 router = APIRouter()
@@ -92,10 +93,24 @@ async def websocket_session(websocket: WebSocket, session_id: str):
                 "question": question_text,
             })
 
-            # Wait for user answer
             data = await websocket.receive_json()
             skipped = data.get("skipped", False)
             answer = data.get("answer", "")
+            image_base64 = data.get("image_base64", "")
+
+            if image_base64:
+                vision_resp = await vision_analyze_image(image_base64)
+                if not vision_resp.degraded:
+                    vision_text = (
+                        f"[Vision Agent Analysis of User Uploaded Image]\n"
+                        f"- Layout: {vision_resp.layout_json}\n"
+                        f"- Components: {vision_resp.components_json}\n"
+                        f"- Color Palette: {vision_resp.color_palette_json}\n"
+                        f"- Style/Vibe: {vision_resp.style_vibe}"
+                    )
+                    answer += f"\n\n{vision_text}"
+                else:
+                    answer += f"\n\n[Vision Agent Error: {vision_resp.degradation_message}]"
 
             if skipped:
                 await complete_session_phase(session_id, phase_num, skipped=True)
