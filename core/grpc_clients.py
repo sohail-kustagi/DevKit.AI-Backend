@@ -16,7 +16,7 @@ async def triage_classify(user_input: str) -> tuple[str, float]:
     async with get_grpc_channel() as channel:
         stub = triage_pb2_grpc.TriageServiceStub(channel)
         req = triage_pb2.TriageRequest(user_input=user_input)
-        resp = await stub.ClassifyFluency(req, timeout=GRPC_TIMEOUT)
+        resp = await stub.ClassifyFluency(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
         return resp.fluency, resp.confidence
 
 async def triage_generate_question(phase: int, fluency: str, context_json: str):
@@ -25,7 +25,7 @@ async def triage_generate_question(phase: int, fluency: str, context_json: str):
     try:
         stub = triage_pb2_grpc.TriageServiceStub(channel)
         req = triage_pb2.QuestionRequest(phase=phase, fluency=fluency, context_json=context_json)
-        async for chunk in stub.GenerateQuestion(req, timeout=GRPC_TIMEOUT):
+        async for chunk in stub.GenerateQuestion(req, timeout=GRPC_TIMEOUT, wait_for_ready=True):
             yield chunk.token
     finally:
         await channel.close()
@@ -34,14 +34,14 @@ async def orchestrator_decide(session_json: str) -> tuple[str, str]:
     async with get_grpc_channel() as channel:
         stub = orchestrator_pb2_grpc.OrchestratorServiceStub(channel)
         req = orchestrator_pb2.SessionPayload(session_json=session_json)
-        resp = await stub.DecideNextAction(req, timeout=GRPC_TIMEOUT)
+        resp = await stub.DecideNextAction(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
         return resp.action, resp.payload_json
 
 async def orchestrator_compile_brief(session_json: str) -> str:
     async with get_grpc_channel() as channel:
         stub = orchestrator_pb2_grpc.OrchestratorServiceStub(channel)
         req = orchestrator_pb2.SessionPayload(session_json=session_json)
-        resp = await stub.CompileFinalBrief(req, timeout=GRPC_TIMEOUT)
+        resp = await stub.CompileFinalBrief(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
         return resp.brief_json
 
 async def specialist_run_swarm(brief_json: str):
@@ -50,7 +50,7 @@ async def specialist_run_swarm(brief_json: str):
     try:
         stub = specialist_pb2_grpc.SpecialistServiceStub(channel)
         req = specialist_pb2.BriefRequest(brief_json=brief_json)
-        async for event in stub.RunSwarm(req, timeout=GRPC_TIMEOUT):
+        async for event in stub.RunSwarm(req, timeout=GRPC_TIMEOUT, wait_for_ready=True):
             yield event.event_type, event.payload_json
     finally:
         await channel.close()
