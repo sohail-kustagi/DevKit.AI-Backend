@@ -112,6 +112,10 @@ async def stream_generation(session_id: str):
         yield 'data: {"event": "brief_ready"}\n\n'
         
         session = await get_session(session_id)
+        if session and session.get("final_outputs"):
+            yield 'data: {"event": "done"}\n\n'
+            return
+
         brief = await orchestrator_compile_brief(json.dumps(session, default=str))
         
         final_outputs = {}
