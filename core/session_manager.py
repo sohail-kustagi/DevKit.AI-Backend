@@ -23,7 +23,7 @@ async def create_session(fluency: str, confidence: float) -> str:
         "fluency": fluency,
         "fluency_confidence": confidence,
         "current_phase": 1,
-        "phases": {str(i): {"status": "pending", "data": {}, "skipped": False} for i in range(1, 7)},
+        "phases": {str(i): {"status": "pending", "qna": [], "skipped": False} for i in range(1, 7)},
         "final_outputs": {
             "architecture": None,
             "milestones": None,
@@ -38,15 +38,24 @@ async def get_session(session_id: str) -> dict:
     db = get_db()
     return await db.sessions.find_one({"_id": session_id})
 
-async def update_session_phase(session_id: str, phase: int, status: str, data: dict, skipped: bool = False):
+async def add_qna_to_phase(session_id: str, phase: int, question: str, answer: str):
     db = get_db()
-    update_fields = {
-        f"phases.{phase}.status": status,
-        f"phases.{phase}.data": data,
-        f"phases.{phase}.skipped": skipped,
-        "current_phase": phase + 1 if status == "complete" else phase
-    }
-    await db.sessions.update_one({"_id": session_id}, {"$set": update_fields})
+    await db.sessions.update_one(
+        {"_id": session_id},
+        {"$push": {f"phases.{phase}.qna": {"question": question, "answer": answer}},
+         "$set": {f"phases.{phase}.status": "active"}}
+    )
+
+async def complete_session_phase(session_id: str, phase: int, skipped: bool = False):
+    db = get_db()
+    await db.sessions.update_one(
+        {"_id": session_id},
+        {"$set": {
+            f"phases.{phase}.status": "complete",
+            f"phases.{phase}.skipped": skipped,
+            "current_phase": phase + 1
+        }}
+    )
 
 async def save_final_outputs(session_id: str, architecture: dict, milestones: dict, instruction_md: str, report_md: str):
     db = get_db()

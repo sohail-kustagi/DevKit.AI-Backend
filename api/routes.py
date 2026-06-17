@@ -6,7 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from core.session_manager import create_session, get_session, update_session_phase, save_final_outputs
+from core.session_manager import create_session, get_session, add_qna_to_phase, complete_session_phase, save_final_outputs
 from core.grpc_clients import (
     triage_classify, 
     triage_generate_question, 
@@ -33,6 +33,15 @@ async def fetch_session(session_id: str):
         return JSONResponse({"error": "Not found"}, status_code=404)
     return session
 
+PHASE_KEY_MAP = {
+    1: "ui_ux",
+    2: "core_logic",
+    3: "architecture",
+    4: "security",
+    5: "testing",
+    6: "deployment",
+}
+
 @router.websocket("/ws/session/{session_id}")
 async def websocket_session(websocket: WebSocket, session_id: str):
     await websocket.accept()
@@ -49,22 +58,51 @@ async def websocket_session(websocket: WebSocket, session_id: str):
             if action == "generate_final" or session["current_phase"] > 6:
                 await websocket.send_json({"status": "phases_complete"})
                 break
-                
-            phase = session["current_phase"]
-            fluency = session["fluency"]
-            context_json = json.dumps({"previous_answers": "..."})
+
+            phase_num = session["current_phase"]
+            phase_key = PHASE_KEY_MAP.get(phase_num, "ui_ux")
             
-            # Send question token-by-token
-            async for token in triage_generate_question(phase, fluency, context_json):
-                await websocket.send_json({"token": token})
+            if action == "next_phase":
+                await complete_session_phase(session_id, phase_num)
+                await websocket.send_json({"type": "phase_complete", "phase": phase_key})
+                continue
                 
+            fluency = session["fluency"]
+
+            # Build real context from previous answers
+            previous_answers = {}
+            for k, v in session.get("phases", {}).items():
+                if v.get("status") in ["complete", "active"] or int(k) == phase_num:
+                    qna_list = v.get("qna", [])
+                    if qna_list:
+                        previous_answers[PHASE_KEY_MAP.get(int(k), k)] = "\n".join(
+                            [f"Q: {item['question']}\nA: {item['answer']}" for item in qna_list]
+                        )
+            
+            context_json = json.dumps({"previous_answers": previous_answers})
+
+            # Assemble all tokens into one question string, then send it as a question event
+            question_text = ""
+            async for token in triage_generate_question(phase_num, fluency, context_json):
+                question_text += token
+
+            await websocket.send_json({
+                "type": "question",
+                "phase": phase_key,
+                "question": question_text,
+            })
+
             # Wait for user answer
             data = await websocket.receive_json()
             skipped = data.get("skipped", False)
             answer = data.get("answer", "")
-            
-            await update_session_phase(session_id, phase, "complete", {"answer": answer}, skipped)
-            
+
+            if skipped:
+                await complete_session_phase(session_id, phase_num, skipped=True)
+                await websocket.send_json({"type": "phase_complete", "phase": phase_key})
+            else:
+                await add_qna_to_phase(session_id, phase_num, question_text, answer)
+
     except WebSocketDisconnect:
         pass
 
@@ -103,15 +141,25 @@ async def fetch_results(session_id: str):
         
     outputs = session["final_outputs"]
     
+    # Build phase summaries from the user's answers
+    phase_summaries = {}
+    PHASE_KEY_MAP = {1: "ui_ux", 2: "core_logic", 3: "architecture", 4: "security", 5: "testing", 6: "deployment"}
+    for k, v in session.get("phases", {}).items():
+        key_str = PHASE_KEY_MAP.get(int(k), k)
+        qna_list = v.get("qna", [])
+        if qna_list:
+            phase_summaries[key_str] = " ".join([item["answer"] for item in qna_list])
+
+    arch = outputs.get("architecture", {})
+    cost = arch.get("cost", {"launch": "$20-50 / mo", "scale": "$200+ / mo"})
+    
     # Map the backend final_outputs to the frontend Results interface
     return {
         "project_name": "DevKit.AI Generated Blueprint",
-        "architecture": outputs.get("architecture", {}),
-        "milestones": outputs.get("milestones", {}).get("timeline", []), # Assuming milestones returned as a list in timeline
-        "cost": {
-            "launch": "$20-50 / mo",
-            "scale": "$200+ / mo"
-        },
+        "architecture": arch,
+        "phase_summaries": phase_summaries,
+        "milestones": outputs.get("milestones", {}).get("milestones", []),
+        "cost": cost,
         "instruction_md": outputs.get("instruction_md", ""),
         "saved": True
     }
