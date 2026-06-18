@@ -127,7 +127,8 @@ async def stream_generation(session_id: str):
         yield 'data: {"event": "brief_ready"}\n\n'
         
         session = await get_session(session_id)
-        if session and session.get("final_outputs"):
+        outputs = session.get("final_outputs") if session else None
+        if outputs and outputs.get("architecture") is not None:
             yield 'data: {"event": "done"}\n\n'
             return
 
@@ -169,17 +170,19 @@ async def fetch_results(session_id: str):
         if qna_list:
             phase_summaries[key_str] = " ".join([item["answer"] for item in qna_list])
 
-    arch = outputs.get("architecture", {})
+    arch = outputs.get("architecture") or {}
     cost = arch.get("cost", {"launch": "$20-50 / mo", "scale": "$200+ / mo"})
+    
+    milestones_data = outputs.get("milestones") or {}
     
     # Map the backend final_outputs to the frontend Results interface
     return {
         "project_name": "DevKit.AI Generated Blueprint",
         "architecture": arch,
         "phase_summaries": phase_summaries,
-        "milestones": outputs.get("milestones", {}).get("milestones", []),
+        "milestones": milestones_data.get("milestones", []),
         "cost": cost,
-        "instruction_md": outputs.get("instruction_md", ""),
+        "instruction_md": outputs.get("instruction_md") or "",
         "saved": True
     }
 
