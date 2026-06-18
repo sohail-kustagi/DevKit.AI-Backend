@@ -3,7 +3,7 @@
 # =============================================================================
 
 # ── MongoDB ───────────────────────────────────────────────────────────────────
-MONGODB_URI = "mongodb+srv://sohailkustagi1234_db_user:MvLedhdA7Eo01ANd@cluster0.jphychl.mongodb.net/?appName=Cluster0"
+MONGODB_URI = "***REMOVED***"
 MONGODB_DB_NAME = "devkit_ai"
 
 # ── gRPC Service Ports ────────────────────────────────────────────────────────
