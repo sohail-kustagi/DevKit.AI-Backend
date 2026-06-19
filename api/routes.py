@@ -2,19 +2,24 @@
 api/routes.py
 """
 import json
+import uuid
+import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
-from core.session_manager import create_session, get_session, add_qna_to_phase, complete_session_phase, save_final_outputs
+from core.session_manager import create_session, get_session, add_qna_to_phase, complete_session_phase, save_final_outputs, get_db
 from core.grpc_clients import (
-    triage_classify, 
-    triage_generate_question, 
-    orchestrator_decide, 
-    orchestrator_compile_brief, 
+    triage_classify,
+    triage_generate_question,
+    orchestrator_decide,
+    orchestrator_compile_brief,
     specialist_run_swarm,
-    vision_analyze_image
+    vision_analyze_image,
+    orchestrator_predict_blueprint,
+    orchestrator_refine_blueprint
 )
+from core.boilerplate_generator import generate_boilerplate_zip
 
 router = APIRouter()
 
@@ -26,6 +31,77 @@ async def start_session(req: StartSessionRequest):
     fluency, confidence = await triage_classify(req.initial_input)
     session_id = await create_session(fluency, confidence)
     return {"session_id": session_id}
+
+
+# ── Quick-Mode: single-shot full blueprint prediction ─────────────────────────
+class PredictRequest(BaseModel):
+    initial_input: str
+
+@router.post("/session/predict")
+async def predict_session(req: PredictRequest):
+    """
+    Quick Mode: infer a complete blueprint from one prompt.
+    Creates session, kicks off the async prediction, returns session_id immediately.
+    The client connects to /stream/generate/{session_id} for live SSE results.
+    """
+    session_id = await create_session("quick_predict", 1.0)
+    # Store the initial idea so the stream endpoint can use it
+
+    await get_db().sessions.update_one(
+        {"_id": session_id},
+        {"$set": {"initial_input": req.initial_input, "mode": "quick"}}
+    )
+    return {"session_id": session_id}
+
+
+# ── Refinement: patch blueprint with natural language ─────────────────────────
+class RefineRequest(BaseModel):
+    message: str
+
+@router.post("/session/{session_id}/refine")
+async def refine_session(session_id: str, req: RefineRequest):
+    """
+    Takes a natural-language refinement message and patches the stored blueprint.
+    Returns updated architecture fields.
+    """
+    session = await get_session(session_id)
+    if not session:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    outputs = session.get("final_outputs") or {}
+    patch_str = await orchestrator_refine_blueprint(json.dumps(outputs), req.message)
+    try:
+        patch = json.loads(patch_str)
+    except:
+        patch = {}
+    # Merge patch into final_outputs
+    if patch.get("architecture"):
+        merged_arch = {**(outputs.get("architecture") or {}), **patch["architecture"]}
+        await get_db().sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"final_outputs.architecture": merged_arch}}
+        )
+        return {"patch": patch, "architecture": merged_arch}
+    return {"patch": patch}
+
+
+# ── Boilerplate ZIP export ────────────────────────────────────────────────────
+@router.post("/export/boilerplate/{session_id}")
+async def export_boilerplate(session_id: str):
+    """Generate and stream a project zip from the session's architecture data."""
+    session = await get_session(session_id)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    if not (session.get("final_outputs") or {}).get("architecture"):
+        return JSONResponse({"error": "Blueprint not ready yet"}, status_code=400)
+
+    buf = generate_boilerplate_zip(session)
+    project_name = (session.get("project_name") or "devkit-project").lower().replace(" ", "-")
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{project_name}-boilerplate.zip"'}
+    )
 
 @router.get("/session/{session_id}")
 async def fetch_session(session_id: str):
@@ -124,34 +200,95 @@ async def websocket_session(websocket: WebSocket, session_id: str):
 @router.get("/stream/generate/{session_id}")
 async def stream_generation(session_id: str):
     async def event_generator():
-        yield 'data: {"event": "brief_ready"}\n\n'
-        
         session = await get_session(session_id)
+        if not session:
+            yield 'data: {"event": "error", "message": "Session not found"}\n\n'
+            return
+
+        # ── Quick Mode: single-shot LLM predict path ──────────────────────────
+        if session.get("mode") == "quick":
+            initial_input = session.get("initial_input", "")
+            yield 'data: {"event": "brief_ready"}\n\n'
+
+            blueprint_str = await orchestrator_predict_blueprint(initial_input)
+            try:
+                blueprint = json.loads(blueprint_str, strict=False)
+            except:
+                blueprint = {}
+
+            arch = blueprint.get("architecture", {})
+            arch_payload = json.dumps(arch)
+            yield f'data: {{"event": "architect_complete", "payload_json": {arch_payload}}}\n\n'
+
+            milestones = {"milestones": blueprint.get("milestones", [])}
+            pm_payload = json.dumps(milestones)
+            yield f'data: {{"event": "pm_complete", "payload_json": {pm_payload}}}\n\n'
+
+            instruction_md = blueprint.get("instruction_md", "")
+            prompt_payload = json.dumps({"instruction_md": instruction_md})
+            yield f'data: {{"event": "prompt_complete", "payload_json": {prompt_payload}}}\n\n'
+
+            combined = {
+                "architecture": arch,
+                "milestones": milestones,
+                "instruction_md": instruction_md,
+                "project_name": blueprint.get("project_name", "Generated Project"),
+                "phase_summaries": blueprint.get("phase_summaries", {}),
+                "cost": arch.get("cost") or blueprint.get("cost", {}),
+                "warnings": blueprint.get("warnings", []),
+                "clarifying_questions": blueprint.get("clarifying_questions", []),
+            }
+            await save_final_outputs(
+                session_id,
+                arch,
+                milestones,
+                instruction_md,
+                f"# {blueprint.get('project_name', 'Project')} Blueprint\n\n{instruction_md}"
+            )
+            # Also save project_name and phase_summaries
+            await get_db().sessions.update_one(
+                {"_id": session_id},
+                {"$set": {
+                    "project_name": blueprint.get("project_name", "Generated Project"),
+                    "final_outputs.phase_summaries": blueprint.get("phase_summaries", {}),
+                    "final_outputs.cost": combined["cost"],
+                    "final_outputs.warnings": combined["warnings"],
+                }}
+            )
+            done_payload = json.dumps(combined)
+            yield f'data: {{"event": "done", "payload_json": {done_payload}}}\n\n'
+            yield 'data: {"event": "saved"}\n\n'
+            return
+
+        # ── Advanced Mode: swarm pipeline path ───────────────────────────────
+        yield 'data: {"event": "brief_ready"}\n\n'
+
         outputs = session.get("final_outputs") if session else None
         if outputs and outputs.get("architecture") is not None:
             yield 'data: {"event": "done"}\n\n'
             return
 
         brief = await orchestrator_compile_brief(json.dumps(session, default=str))
-        
+
         final_outputs = {}
         async for event_type, payload_json in specialist_run_swarm(brief):
             yield f'data: {{"event": "{event_type}", "payload_json": {payload_json}}}\n\n'
             if event_type == "done":
-                data = json.loads(payload_json)
-                final_outputs = data
-                
+                final_outputs = json.loads(payload_json)
+
         if final_outputs:
             await save_final_outputs(
-                session_id, 
-                final_outputs.get("architecture"), 
-                final_outputs.get("milestones"), 
+                session_id,
+                final_outputs.get("architecture"),
+                final_outputs.get("milestones"),
                 final_outputs.get("instruction_md"),
                 "# Full Report\nGenerated successfully."
             )
             yield 'data: {"event": "saved"}\n\n'
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 
 @router.get("/session/{session_id}/results")
 async def fetch_results(session_id: str):
@@ -175,13 +312,22 @@ async def fetch_results(session_id: str):
     
     milestones_data = outputs.get("milestones") or {}
     
-    # Map the backend final_outputs to the frontend Results interface
+    # Prefer stored phase_summaries (Quick Mode) over reconstructed ones
+    stored_summaries = outputs.get("phase_summaries")
+    if stored_summaries:
+        phase_summaries = stored_summaries
+
+    stored_cost = outputs.get("cost")
+    if stored_cost:
+        cost = stored_cost
+
     return {
-        "project_name": "DevKit.AI Generated Blueprint",
+        "project_name": session.get("project_name") or "DevKit.AI Generated Blueprint",
         "architecture": arch,
         "phase_summaries": phase_summaries,
-        "milestones": milestones_data.get("milestones", []),
+        "milestones": milestones_data.get("milestones", []) if isinstance(milestones_data, dict) else (milestones_data if isinstance(milestones_data, list) else []),
         "cost": cost,
+        "warnings": outputs.get("warnings") or [],
         "instruction_md": outputs.get("instruction_md") or "",
         "saved": True
     }

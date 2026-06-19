@@ -11,4 +11,3 @@ sse-starlette
 websockets
 pytest
 pytest-asyncio
-beautifulsoup4

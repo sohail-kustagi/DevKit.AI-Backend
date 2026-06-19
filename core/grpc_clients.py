@@ -62,3 +62,18 @@ async def vision_analyze_image(image_base64: str):
         req = vision_pb2.ImageRequest(image_base64=image_base64)
         resp = await stub.AnalyzeImage(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
         return resp
+
+async def orchestrator_predict_blueprint(initial_input: str) -> str:
+    async with get_grpc_channel() as channel:
+        stub = orchestrator_pb2_grpc.OrchestratorServiceStub(channel)
+        req = orchestrator_pb2.PredictRequest(initial_input=initial_input)
+        resp = await stub.PredictBlueprint(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
+        return resp.blueprint_json
+
+async def orchestrator_refine_blueprint(current_blueprint_json: str, message: str) -> str:
+    async with get_grpc_channel() as channel:
+        stub = orchestrator_pb2_grpc.OrchestratorServiceStub(channel)
+        req = orchestrator_pb2.RefineRequest(current_blueprint_json=current_blueprint_json, message=message)
+        resp = await stub.RefineBlueprint(req, timeout=GRPC_TIMEOUT, wait_for_ready=True)
+        return resp.patch_json
+

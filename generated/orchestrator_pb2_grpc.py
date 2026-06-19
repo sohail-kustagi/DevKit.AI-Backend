@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from generated import orchestrator_pb2 as orchestrator__pb2
+import generated.orchestrator_pb2 as orchestrator__pb2
 
 GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
@@ -51,6 +51,16 @@ class OrchestratorServiceStub:
                 request_serializer=orchestrator__pb2.SessionPayload.SerializeToString,
                 response_deserializer=orchestrator__pb2.BriefResponse.FromString,
                 _registered_method=True)
+        self.PredictBlueprint = channel.unary_unary(
+                '/orchestrator.OrchestratorService/PredictBlueprint',
+                request_serializer=orchestrator__pb2.PredictRequest.SerializeToString,
+                response_deserializer=orchestrator__pb2.PredictResponse.FromString,
+                _registered_method=True)
+        self.RefineBlueprint = channel.unary_unary(
+                '/orchestrator.OrchestratorService/RefineBlueprint',
+                request_serializer=orchestrator__pb2.RefineRequest.SerializeToString,
+                response_deserializer=orchestrator__pb2.RefineResponse.FromString,
+                _registered_method=True)
 
 
 class OrchestratorServiceServicer:
@@ -77,6 +87,20 @@ class OrchestratorServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PredictBlueprint(self, request, context):
+        """Quick Mode: Single-shot full blueprint inference
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefineBlueprint(self, request, context):
+        """Quick Mode: Natural-language blueprint refinement
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_OrchestratorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -89,6 +113,16 @@ def add_OrchestratorServiceServicer_to_server(servicer, server):
                     servicer.CompileFinalBrief,
                     request_deserializer=orchestrator__pb2.SessionPayload.FromString,
                     response_serializer=orchestrator__pb2.BriefResponse.SerializeToString,
+            ),
+            'PredictBlueprint': grpc.unary_unary_rpc_method_handler(
+                    servicer.PredictBlueprint,
+                    request_deserializer=orchestrator__pb2.PredictRequest.FromString,
+                    response_serializer=orchestrator__pb2.PredictResponse.SerializeToString,
+            ),
+            'RefineBlueprint': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefineBlueprint,
+                    request_deserializer=orchestrator__pb2.RefineRequest.FromString,
+                    response_serializer=orchestrator__pb2.RefineResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -152,6 +186,60 @@ class OrchestratorService:
             '/orchestrator.OrchestratorService/CompileFinalBrief',
             orchestrator__pb2.SessionPayload.SerializeToString,
             orchestrator__pb2.BriefResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PredictBlueprint(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/orchestrator.OrchestratorService/PredictBlueprint',
+            orchestrator__pb2.PredictRequest.SerializeToString,
+            orchestrator__pb2.PredictResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefineBlueprint(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/orchestrator.OrchestratorService/RefineBlueprint',
+            orchestrator__pb2.RefineRequest.SerializeToString,
+            orchestrator__pb2.RefineResponse.FromString,
             options,
             channel_credentials,
             insecure,

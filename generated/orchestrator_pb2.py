@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12orchestrator.proto\x12\x0corchestrator\"&\n\x0eSessionPayload\x12\x14\n\x0csession_json\x18\x01 \x01(\t\"6\n\x0e\x41\x63tionResponse\x12\x0e\n\x06\x61\x63tion\x18\x01 \x01(\t\x12\x14\n\x0cpayload_json\x18\x02 \x01(\t\"#\n\rBriefResponse\x12\x12\n\nbrief_json\x18\x01 \x01(\t2\xb5\x01\n\x13OrchestratorService\x12N\n\x10\x44\x65\x63ideNextAction\x12\x1c.orchestrator.SessionPayload\x1a\x1c.orchestrator.ActionResponse\x12N\n\x11\x43ompileFinalBrief\x12\x1c.orchestrator.SessionPayload\x1a\x1b.orchestrator.BriefResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12orchestrator.proto\x12\x0corchestrator\"&\n\x0eSessionPayload\x12\x14\n\x0csession_json\x18\x01 \x01(\t\"6\n\x0e\x41\x63tionResponse\x12\x0e\n\x06\x61\x63tion\x18\x01 \x01(\t\x12\x14\n\x0cpayload_json\x18\x02 \x01(\t\"#\n\rBriefResponse\x12\x12\n\nbrief_json\x18\x01 \x01(\t\"\'\n\x0ePredictRequest\x12\x15\n\rinitial_input\x18\x01 \x01(\t\")\n\x0fPredictResponse\x12\x16\n\x0e\x62lueprint_json\x18\x01 \x01(\t\"@\n\rRefineRequest\x12\x1e\n\x16\x63urrent_blueprint_json\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"$\n\x0eRefineResponse\x12\x12\n\npatch_json\x18\x01 \x01(\t2\xd4\x02\n\x13OrchestratorService\x12N\n\x10\x44\x65\x63ideNextAction\x12\x1c.orchestrator.SessionPayload\x1a\x1c.orchestrator.ActionResponse\x12N\n\x11\x43ompileFinalBrief\x12\x1c.orchestrator.SessionPayload\x1a\x1b.orchestrator.BriefResponse\x12O\n\x10PredictBlueprint\x12\x1c.orchestrator.PredictRequest\x1a\x1d.orchestrator.PredictResponse\x12L\n\x0fRefineBlueprint\x12\x1b.orchestrator.RefineRequest\x1a\x1c.orchestrator.RefineResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,6 +37,14 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_ACTIONRESPONSE']._serialized_end=130
   _globals['_BRIEFRESPONSE']._serialized_start=132
   _globals['_BRIEFRESPONSE']._serialized_end=167
-  _globals['_ORCHESTRATORSERVICE']._serialized_start=170
-  _globals['_ORCHESTRATORSERVICE']._serialized_end=351
+  _globals['_PREDICTREQUEST']._serialized_start=169
+  _globals['_PREDICTREQUEST']._serialized_end=208
+  _globals['_PREDICTRESPONSE']._serialized_start=210
+  _globals['_PREDICTRESPONSE']._serialized_end=251
+  _globals['_REFINEREQUEST']._serialized_start=253
+  _globals['_REFINEREQUEST']._serialized_end=317
+  _globals['_REFINERESPONSE']._serialized_start=319
+  _globals['_REFINERESPONSE']._serialized_end=355
+  _globals['_ORCHESTRATORSERVICE']._serialized_start=358
+  _globals['_ORCHESTRATORSERVICE']._serialized_end=698
 # @@protoc_insertion_point(module_scope)
