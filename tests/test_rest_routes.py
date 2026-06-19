@@ -17,7 +17,8 @@ from main import app
 @pytest.mark.asyncio
 async def test_start_session_returns_id():
     """POST /session/start returns a JSON body with a session_id."""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    from httpx import ASGITransport
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # TODO: Implement — Phase 6
         pass
 
