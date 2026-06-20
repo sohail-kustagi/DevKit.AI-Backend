@@ -270,6 +270,10 @@ async def websocket_session(websocket: WebSocket, session_id: str):
             phase_num = session["current_phase"]
             phase_key = PHASE_KEY_MAP.get(phase_num, "ui_ux")
             
+            phase_data = session.get("phases", {}).get(str(phase_num), {})
+            if len(phase_data.get("qna", [])) >= 2:
+                action = "next_phase"
+            
             if action == "next_phase":
                 await complete_session_phase(session_id, phase_num)
                 await websocket.send_json({"type": "phase_complete", "phase": phase_key})
