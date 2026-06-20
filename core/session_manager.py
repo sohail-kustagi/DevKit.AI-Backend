@@ -14,12 +14,13 @@ def get_db():
         _client = AsyncIOMotorClient(MONGODB_URI)
     return _client.devkit
 
-async def create_session(fluency: str, confidence: float) -> str:
+async def create_session(fluency: str, confidence: float, initial_input: str = "") -> str:
     db = get_db()
     session_id = str(uuid.uuid4())
     doc = {
         "_id": session_id,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "initial_input": initial_input,
         "fluency": fluency,
         "fluency_confidence": confidence,
         "current_phase": 1,

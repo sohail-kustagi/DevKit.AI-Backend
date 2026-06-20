@@ -29,7 +29,7 @@ class StartSessionRequest(BaseModel):
 @router.post("/session/start")
 async def start_session(req: StartSessionRequest):
     fluency, confidence = await triage_classify(req.initial_input)
-    session_id = await create_session(fluency, confidence)
+    session_id = await create_session(fluency, confidence, req.initial_input)
     return {"session_id": session_id}
 
 
@@ -44,12 +44,12 @@ async def predict_session(req: PredictRequest):
     Creates session, kicks off the async prediction, returns session_id immediately.
     The client connects to /stream/generate/{session_id} for live SSE results.
     """
-    session_id = await create_session("quick_predict", 1.0)
+    session_id = await create_session("quick_predict", 1.0, req.initial_input)
     # Store the initial idea so the stream endpoint can use it
 
     await get_db().sessions.update_one(
         {"_id": session_id},
-        {"$set": {"initial_input": req.initial_input, "mode": "quick"}}
+        {"$set": {"mode": "quick"}}
     )
     return {"session_id": session_id}
 
@@ -85,22 +85,27 @@ async def refine_session(session_id: str, req: RefineRequest):
     })
 
     # Merge patch into final_outputs
-    if patch.get("architecture"):
-        merged_arch = {**(outputs.get("architecture") or {}), **patch["architecture"]}
-        await get_db().sessions.update_one(
-            {"_id": session_id},
-            {"$set": {
-                "final_outputs.architecture": merged_arch,
-                "refinement_history": history
-            }}
-        )
-        return {"patch": patch, "architecture": merged_arch, "refinement_history": history}
+    updated_fields = {"refinement_history": history}
+    response_data = {"patch": patch, "refinement_history": history}
     
+    merged_arch = outputs.get("architecture") or {}
+    if patch.get("architecture"):
+        merged_arch = {**merged_arch, **patch["architecture"]}
+        updated_fields["final_outputs.architecture"] = merged_arch
+        response_data["architecture"] = merged_arch
+    
+    # Merge other top-level fields
+    for field in ["instruction_md", "milestones", "cost", "warnings", "project_name"]:
+        if field in patch:
+            updated_fields[f"final_outputs.{field}"] = patch[field]
+            response_data[field] = patch[field]
+            
     await get_db().sessions.update_one(
         {"_id": session_id},
-        {"$set": {"refinement_history": history}}
+        {"$set": updated_fields}
     )
-    return {"patch": patch, "refinement_history": history}
+    
+    return response_data
 
 
 # ── VC Pitch Deck Export ──────────────────────────────────────────────────────
@@ -114,14 +119,28 @@ async def export_pitch_deck(session_id: str):
     outputs = session.get("final_outputs") or {}
     project_name = session.get("project_name") or "DevKit.AI Generated Project"
     
-    phase_summaries = outputs.get("phase_summaries") or {}
+    stored_summaries = outputs.get("phase_summaries")
+    if stored_summaries:
+        phase_summaries = stored_summaries
+    else:
+        phase_summaries = {}
+        PHASE_KEY_MAP = {1: "ui_ux", 2: "core_logic", 3: "architecture", 4: "security", 5: "testing", 6: "deployment"}
+        for k, v in session.get("phases", {}).items():
+            key_str = PHASE_KEY_MAP.get(int(k), k)
+            if v.get("summary"):
+                phase_summaries[key_str] = v.get("summary")
+            else:
+                qna_list = v.get("qna", [])
+                if qna_list:
+                    phase_summaries[key_str] = " ".join([item["answer"] for item in qna_list])
+
     ui_ux = phase_summaries.get("ui_ux") or "To be determined."
     core_logic = phase_summaries.get("core_logic") or "To be determined."
     arch_summary = phase_summaries.get("architecture") or "To be determined."
     security = phase_summaries.get("security") or "To be determined."
     
     arch = outputs.get("architecture") or {}
-    cost = outputs.get("cost") or {}
+    cost = outputs.get("cost") or arch.get("cost") or {}
     milestones_data = outputs.get("milestones") or []
     if isinstance(milestones_data, dict):
         milestones = milestones_data.get("milestones", [])
@@ -131,7 +150,21 @@ async def export_pitch_deck(session_id: str):
     warnings = outputs.get("warnings") or []
 
     # Format Architecture bullets
-    arch_bullets = "\n".join([f"- **{k.capitalize()}**: {v}" for k, v in arch.items()]) if arch else "- To be determined."
+    arch_bullets_list = []
+    if arch:
+        for k, v in arch.items():
+            if k == "cost":
+                continue
+            if isinstance(v, list):
+                val_str = ", ".join(str(item) for item in v)
+            elif isinstance(v, dict):
+                val_str = ", ".join(f"{sub_k}: {sub_v}" for sub_k, sub_v in v.items())
+            else:
+                val_str = str(v).replace('\n', ' ')
+            arch_bullets_list.append(f"- **{k.capitalize()}**: {val_str}")
+        arch_bullets = "\n".join(arch_bullets_list)
+    else:
+        arch_bullets = "- To be determined."
     
     # Format Milestones
     ms_bullets = "\n".join([f"- **{m.get('name', 'Phase')}** ({m.get('duration', '')})" for m in milestones]) if milestones else "- To be determined."
@@ -254,7 +287,10 @@ async def websocket_session(websocket: WebSocket, session_id: str):
                             [f"Q: {item['question']}\nA: {item['answer']}" for item in qna_list]
                         )
             
-            context_json = json.dumps({"previous_answers": previous_answers})
+            context_dict = {"previous_answers": previous_answers}
+            if session.get("initial_input"):
+                context_dict["initial_input"] = session["initial_input"]
+            context_json = json.dumps(context_dict)
 
             # Assemble all tokens into one question string, then send it as a question event
             question_text = ""
