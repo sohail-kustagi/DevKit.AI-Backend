@@ -33,9 +33,9 @@ def _package_json(arch: dict, project_name: str, stack: dict) -> str:
     deps = {"dotenv": "^16.0.0"}
     dev_deps = {}
 
-    if stack["use_express"]:
-        deps.update({"express": "^4.18.0", "cors": "^2.8.5", "helmet": "^7.0.0", "morgan": "^1.10.0"})
-        dev_deps.update({"nodemon": "^3.0.0"})
+    # Always include Express deps since we always generate an Express skeleton right now
+    deps.update({"express": "^4.18.0", "cors": "^2.8.5", "helmet": "^7.0.0", "morgan": "^1.10.0"})
+    dev_deps.update({"nodemon": "^3.0.0"})
 
     if stack["use_postgres"]:
         deps["pg"] = "^8.11.0"
@@ -63,7 +63,7 @@ def _package_json(arch: dict, project_name: str, stack: dict) -> str:
         "main": "src/index.js",
         "scripts": {
             "start": "node src/index.js",
-            "dev": "nodemon src/index.js" if stack["use_express"] else "node src/index.js",
+            "dev": "nodemon src/index.js",
             "lint": "eslint ."
         },
         "dependencies": deps,
@@ -81,17 +81,18 @@ def _server_js(arch: dict, stack: dict) -> str:
     if stack["use_postgres"]:
         db_section = """
 const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://localhost:5432/test' });
+pool.connect().then(() => console.log('Postgres connected')).catch(err => console.error('Postgres error:', err.message));
 """
     elif stack["use_mongo"]:
         db_section = """
 const mongoose = require('mongoose');
-mongoose.connect(process.env.MONGO_URI).then(() => console.log('MongoDB connected'));
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/test').then(() => console.log('MongoDB connected')).catch(err => console.error('MongoDB error:', err.message));
 """
     elif stack["use_mysql"]:
         db_section = """
 const mysql = require('mysql2/promise');
-const pool = mysql.createPool(process.env.DATABASE_URL);
+const pool = mysql.createPool(process.env.DATABASE_URL || 'mysql://localhost:3306/test');
 """
 
     return f"""'use strict';
