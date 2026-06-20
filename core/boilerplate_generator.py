@@ -104,7 +104,7 @@ const morgan = require('morgan');
 const app = express();
 
 // ─── Middleware ────────────────────────────────────────────────
-app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
+app.use(helmet({{ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }}));
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
