@@ -104,7 +104,7 @@ const morgan = require('morgan');
 const app = express();
 
 // ─── Middleware ────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
@@ -133,7 +133,7 @@ app.use((err, req, res, next) => {{
 
 // ─── Start Server ──────────────────────────────────────────────
 const PORT = {port};
-app.listen(PORT, () => {{
+app.listen(PORT, '0.0.0.0', () => {{
   console.log(`🚀 Server running on http://localhost:${{PORT}}`);
   console.log(`📦 Stack: {arch.get("backend", "Node.js")} + {db}`);
 }});

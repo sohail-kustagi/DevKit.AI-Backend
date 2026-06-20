@@ -68,20 +68,39 @@ async def refine_session(session_id: str, req: RefineRequest):
     if not session:
         return JSONResponse({"error": "Not found"}, status_code=404)
     outputs = session.get("final_outputs") or {}
-    patch_str = await orchestrator_refine_blueprint(json.dumps(outputs), req.message)
+    
+    history = session.get("refinement_history") or []
+    history.append({"role": "user", "text": req.message})
+
+    patch_str = await orchestrator_refine_blueprint(json.dumps(outputs), json.dumps(history))
     try:
         patch = json.loads(patch_str)
     except:
         patch = {}
+        
+    history.append({
+        "role": "ai", 
+        "text": f"✅ Processed request.", 
+        "patch": patch
+    })
+
     # Merge patch into final_outputs
     if patch.get("architecture"):
         merged_arch = {**(outputs.get("architecture") or {}), **patch["architecture"]}
         await get_db().sessions.update_one(
             {"_id": session_id},
-            {"$set": {"final_outputs.architecture": merged_arch}}
+            {"$set": {
+                "final_outputs.architecture": merged_arch,
+                "refinement_history": history
+            }}
         )
-        return {"patch": patch, "architecture": merged_arch}
-    return {"patch": patch}
+        return {"patch": patch, "architecture": merged_arch, "refinement_history": history}
+    
+    await get_db().sessions.update_one(
+        {"_id": session_id},
+        {"$set": {"refinement_history": history}}
+    )
+    return {"patch": patch, "refinement_history": history}
 
 
 # ── Boilerplate ZIP export ────────────────────────────────────────────────────
@@ -329,6 +348,7 @@ async def fetch_results(session_id: str):
         "cost": cost,
         "warnings": outputs.get("warnings") or [],
         "instruction_md": outputs.get("instruction_md") or "",
+        "refinement_history": session.get("refinement_history") or [],
         "saved": True
     }
 
