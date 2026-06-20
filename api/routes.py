@@ -103,6 +103,85 @@ async def refine_session(session_id: str, req: RefineRequest):
     return {"patch": patch, "refinement_history": history}
 
 
+# ── VC Pitch Deck Export ──────────────────────────────────────────────────────
+@router.get("/export/pitch-deck/{session_id}")
+async def export_pitch_deck(session_id: str):
+    """Generates a Markdown VC Pitch Deck based on the session's architecture and summaries."""
+    session = await get_session(session_id)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+        
+    outputs = session.get("final_outputs") or {}
+    project_name = session.get("project_name") or "DevKit.AI Generated Project"
+    
+    phase_summaries = outputs.get("phase_summaries") or {}
+    ui_ux = phase_summaries.get("ui_ux") or "To be determined."
+    core_logic = phase_summaries.get("core_logic") or "To be determined."
+    arch_summary = phase_summaries.get("architecture") or "To be determined."
+    security = phase_summaries.get("security") or "To be determined."
+    
+    arch = outputs.get("architecture") or {}
+    cost = outputs.get("cost") or {}
+    milestones_data = outputs.get("milestones") or []
+    if isinstance(milestones_data, dict):
+        milestones = milestones_data.get("milestones", [])
+    else:
+        milestones = milestones_data if isinstance(milestones_data, list) else []
+    
+    warnings = outputs.get("warnings") or []
+
+    # Format Architecture bullets
+    arch_bullets = "\n".join([f"- **{k.capitalize()}**: {v}" for k, v in arch.items()]) if arch else "- To be determined."
+    
+    # Format Milestones
+    ms_bullets = "\n".join([f"- **{m.get('name', 'Phase')}** ({m.get('duration', '')})" for m in milestones]) if milestones else "- To be determined."
+    
+    # Format Warnings
+    warn_bullets = "\n".join([f"- ⚠️ {w.get('title', 'Warning')}: {w.get('description', '')}" for w in warnings]) if warnings else "- Minimal foreseeable risks."
+
+    md_content = f"""# {project_name} - Pitch Deck
+
+## Slide 1: Vision & Overview
+{ui_ux}
+
+---
+
+## Slide 2: The Solution & Core Logic
+{core_logic}
+
+---
+
+## Slide 3: Our Technical Moat
+{arch_summary}
+
+**Tech Stack:**
+{arch_bullets}
+
+---
+
+## Slide 4: Execution Timeline
+{ms_bullets}
+
+---
+
+## Slide 5: Business Scaling & Security
+**Cost Analysis:**
+- **Launch Phase:** {cost.get("launch", "TBD")}
+- **Scale Phase:** {cost.get("scale", "TBD")}
+
+**Security & Compliance:**
+{security}
+
+**Key Operational Risks:**
+{warn_bullets}
+"""
+
+    return PlainTextResponse(
+        content=md_content,
+        headers={"Content-Disposition": f'attachment; filename="{project_name.replace(" ", "_")}_PitchDeck.md"'}
+    )
+
+
 # ── Boilerplate ZIP export ────────────────────────────────────────────────────
 @router.post("/export/boilerplate/{session_id}")
 async def export_boilerplate(session_id: str):
